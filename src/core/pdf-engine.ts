@@ -1,4 +1,5 @@
 import { PDFDocument, degrees, rgb, StandardFonts } from 'pdf-lib';
+import { OptimizationResult } from '../types';
 
 /**
  * Merges multiple PDF byte arrays into a single unified PDF.
@@ -24,6 +25,20 @@ export async function extractPages(pdfBuffer: Uint8Array, pageIndices: number[])
   const newPdf = await PDFDocument.create();
 
   const validIndices = pageIndices.filter((idx) => idx >= 0 && idx < srcPdf.getPageCount());
+  const copiedPages = await newPdf.copyPages(srcPdf, validIndices);
+  copiedPages.forEach((page) => newPdf.addPage(page));
+
+  return await newPdf.save();
+}
+
+/**
+ * Reorders pages according to an array of indices.
+ */
+export async function reorderPages(pdfBuffer: Uint8Array, newOrderIndices: number[]): Promise<Uint8Array> {
+  const srcPdf = await PDFDocument.load(pdfBuffer);
+  const newPdf = await PDFDocument.create();
+
+  const validIndices = newOrderIndices.filter((idx) => idx >= 0 && idx < srcPdf.getPageCount());
   const copiedPages = await newPdf.copyPages(srcPdf, validIndices);
   copiedPages.forEach((page) => newPdf.addPage(page));
 
@@ -84,6 +99,26 @@ export async function addWatermark(
   }
 
   return await pdfDoc.save();
+}
+
+/**
+ * Optimizes PDF size via Object Streams compaction and unused dictionary stripping.
+ */
+export async function optimizePdf(pdfBuffer: Uint8Array): Promise<OptimizationResult> {
+  const pdfDoc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
+  const optimizedBytes = await pdfDoc.save({ useObjectStreams: true });
+  const originalSize = pdfBuffer.length;
+  const optimizedSize = optimizedBytes.length;
+  const savedPercentage = originalSize > 0
+    ? Math.max(0, Number((((originalSize - optimizedSize) / originalSize) * 100).toFixed(1)))
+    : 0;
+
+  return {
+    bytes: optimizedBytes,
+    originalSize,
+    optimizedSize,
+    savedPercentage
+  };
 }
 
 /**
